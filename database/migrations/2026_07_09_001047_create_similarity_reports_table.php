@@ -11,7 +11,8 @@ return new class extends Migration
         Schema::create('similarity_reports', function (Blueprint $table) {
             $table->uuid('report_id')->primary();
             $table->foreignUuid('submission_id')->constrained('submissions', 'submission_id');
-            $table->decimal('score', 5, 2);
+            $table->decimal('score', 5, 2)->default(0);
+            $table->json('matched_sources')->nullable();
             $table->timestamp('generated_at')->useCurrent();
         });
     }
