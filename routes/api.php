@@ -8,9 +8,15 @@ use App\Http\Controllers\SubmissionController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\SimilarityReportController;
 use App\Http\Controllers\ApprovalController;
+use App\Http\Controllers\ActivityLogController;
+use App\Http\Controllers\RepositoryItemController;
+use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\AcademicSessionController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/departments', [DepartmentController::class, 'index']);
+Route::get('/academic-sessions/active', [AcademicSessionController::class, 'active']);
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
@@ -39,4 +45,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/approvals/{approval}', [ApprovalController::class, 'show']);
     Route::post('/approvals', [ApprovalController::class, 'store']);
     Route::put('/approvals/{approval}', [ApprovalController::class, 'update']);
+
+    Route::get('/activity-logs', [ActivityLogController::class, 'index']);
+
+    Route::get('/repository-items', [RepositoryItemController::class, 'index']);
+    Route::get('/repository-items/{item}', [RepositoryItemController::class, 'show']);
+    Route::delete('/repository-items/{item}', [RepositoryItemController::class, 'destroy']);
 });

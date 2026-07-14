@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Approval;
 use App\Models\Project;
+use App\Models\RepositoryItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ApprovalController extends Controller
 {
@@ -45,16 +47,20 @@ class ApprovalController extends Controller
             return response()->json(['message' => 'You are not authorized to approve this project.'], 403);
         }
 
-        $approval = Approval::create([
-            'project_id' => $validated['project_id'],
-            'approved_by' => $user->user_id,
-            'stage' => $validated['stage'],
-            'status' => $validated['status'],
-            'notes' => $validated['notes'] ?? null,
-            'approval_date' => $validated['status'] !== 'pending' ? now() : null,
-        ]);
+        $approval = DB::transaction(function () use ($validated, $user, $project) {
+            $approval = Approval::create([
+                'project_id' => $validated['project_id'],
+                'approved_by' => $user->user_id,
+                'stage' => $validated['stage'],
+                'status' => $validated['status'],
+                'notes' => $validated['notes'] ?? null,
+                'approval_date' => $validated['status'] !== 'pending' ? now() : null,
+            ]);
 
-        $this->cascadeProjectStatus($project, $validated['stage'], $validated['status']);
+            $this->cascadeProjectStatus($project, $validated['stage'], $validated['status']);
+
+            return $approval;
+        });
 
         return response()->json($approval->load('project'), 201);
     }
@@ -73,13 +79,15 @@ class ApprovalController extends Controller
             'notes' => 'nullable|string',
         ]);
 
-        $approval->update([
-            'status' => $validated['status'],
-            'notes' => $validated['notes'] ?? $approval->notes,
-            'approval_date' => $validated['status'] !== 'pending' ? now() : null,
-        ]);
+        DB::transaction(function () use ($approval, $validated, $project) {
+            $approval->update([
+                'status' => $validated['status'],
+                'notes' => $validated['notes'] ?? $approval->notes,
+                'approval_date' => $validated['status'] !== 'pending' ? now() : null,
+            ]);
 
-        $this->cascadeProjectStatus($project, $approval->stage, $validated['status']);
+            $this->cascadeProjectStatus($project, $approval->stage, $validated['status']);
+        });
 
         return response()->json($approval->load('project'));
     }
@@ -97,13 +105,29 @@ class ApprovalController extends Controller
     {
         $newStatus = match (true) {
             $approvalStatus === 'rejected' => 'correction_required',
-            $approvalStatus === 'approved' && $stage === 'final' => 'approved',
+            $approvalStatus === 'approved' && $stage === 'final' => 'archived',
             $approvalStatus === 'approved' => 'under_review',
             default => null, // pending — no change
         };
 
-        if ($newStatus) {
-            $project->update(['status' => $newStatus]);
+        if (! $newStatus) {
+            return;
+        }
+
+        $project->update(['status' => $newStatus]);
+
+        if ($newStatus === 'archived') {
+            RepositoryItem::create([
+                'title' => $project->title,
+                'abstract' => $project->description,
+                'keywords' => [],
+                'department_id' => $project->department_id,
+                'session_id' => $project->session_id,
+                'student_id' => $project->student_id,
+                'supervisor_id' => $project->supervisor_id,
+                'file_path' => '', // populated later when final submission file is attached
+                'archived_at' => now(),
+            ]);
         }
     }
 }
