@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('approvals', function (Blueprint $table) {
             $table->uuid('approval_id')->primary();
             $table->foreignUuid('project_id')->constrained('projects', 'project_id');
-            $table->foreignUuid('approved_by')->constrained('users', 'user_id');
+            $table->foreignUuid('approved_by')->nullable()->constrained('users', 'user_id');
             $table->string('stage');
             $table->enum('status', ['pending', 'approved', 'rejected'])->default('pending');
             $table->text('notes')->nullable();
