@@ -17,4 +17,10 @@ class Department extends Model
         'name',
         'code',
     ];
+
+    public function getRouteKeyName(): string
+{
+    return 'department_id';
 }
+}
+

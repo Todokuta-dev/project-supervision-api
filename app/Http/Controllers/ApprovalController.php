@@ -31,66 +31,68 @@ class ApprovalController extends Controller
         return response()->json($approval);
     }
 
-    public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'project_id' => 'required|exists:projects,project_id',
-            'stage' => 'required|string|max:100',
-            'status' => 'required|in:pending,approved,rejected',
-            'notes' => 'nullable|string',
+public function store(Request $request)
+{
+    $validated = $request->validate([
+        'title' => 'required|string|max:255',
+        'description' => 'required|string',
+        'supervisor_id' => 'nullable|exists:users,user_id',
+    ]);
+
+    $user = $request->user();
+
+    $project = DB::transaction(function () use ($validated, $user) {
+        $project = Project::create([
+            'title' => $validated['title'],
+            'description' => $validated['description'],
+            'student_id' => $user->user_id,
+            'supervisor_id' => $validated['supervisor_id'] ?? null,
+            'department_id' => $user->department_id,
+            'session_id' => $user->session_id,
+            'status' => 'topic_pending',
         ]);
 
-        $user = $request->user();
-        $project = Project::findOrFail($validated['project_id']);
-
-        if (! $this->canDecide($user, $project)) {
-            return response()->json(['message' => 'You are not authorized to approve this project.'], 403);
-        }
-
-        $approval = DB::transaction(function () use ($validated, $user, $project) {
-            $approval = Approval::create([
-                'project_id' => $validated['project_id'],
-                'approved_by' => $user->user_id,
-                'stage' => $validated['stage'],
-                'status' => $validated['status'],
-                'notes' => $validated['notes'] ?? null,
-                'approval_date' => $validated['status'] !== 'pending' ? now() : null,
-            ]);
-
-            $this->cascadeProjectStatus($project, $validated['stage'], $validated['status']);
-
-            return $approval;
-        });
-
-        return response()->json($approval->load('project'), 201);
-    }
-
-    public function update(Request $request, Approval $approval)
-    {
-        $user = $request->user();
-        $project = $approval->project;
-
-        if (! $this->canDecide($user, $project)) {
-            return response()->json(['message' => 'You are not authorized to approve this project.'], 403);
-        }
-
-        $validated = $request->validate([
-            'status' => 'required|in:pending,approved,rejected',
-            'notes' => 'nullable|string',
+        Approval::create([
+            'project_id' => $project->project_id,
+            'approved_by' => null,
+            'stage' => 'topic',
+            'status' => 'pending',
+            'notes' => null,
+            'approval_date' => null,
         ]);
 
-        DB::transaction(function () use ($approval, $validated, $project) {
-            $approval->update([
-                'status' => $validated['status'],
-                'notes' => $validated['notes'] ?? $approval->notes,
-                'approval_date' => $validated['status'] !== 'pending' ? now() : null,
-            ]);
+        return $project;
+    });
 
-            $this->cascadeProjectStatus($project, $approval->stage, $validated['status']);
-        });
+    return response()->json($project, 201);
+}
+public function update(Request $request, Approval $approval)
+{
+    $user = $request->user();
+    $project = $approval->project;
 
-        return response()->json($approval->load('project'));
+    if (! $this->canDecide($user, $project)) {
+        return response()->json(['message' => 'You are not authorized to approve this project.'], 403);
     }
+
+    $validated = $request->validate([
+        'status' => 'required|in:pending,approved,rejected',
+        'notes' => 'nullable|string',
+    ]);
+
+    DB::transaction(function () use ($approval, $validated, $project, $user) {
+        $approval->update([
+            'status' => $validated['status'],
+            'notes' => $validated['notes'] ?? $approval->notes,
+            'approved_by' => $user->user_id,
+            'approval_date' => $validated['status'] !== 'pending' ? now() : null,
+        ]);
+
+        $this->cascadeProjectStatus($project, $approval->stage, $validated['status']);
+    });
+
+    return response()->json($approval->load('project'));
+}
 
     private function canDecide($user, Project $project): bool
     {

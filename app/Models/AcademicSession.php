@@ -28,4 +28,9 @@ class AcademicSession extends Model
             'end_date' => 'date',
         ];
     }
+
+    public function getRouteKeyName(): string
+{
+    return 'session_id';
+}
 }

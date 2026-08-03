@@ -12,6 +12,7 @@ use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\RepositoryItemController;
 use App\Http\Controllers\DepartmentController;
 use App\Http\Controllers\AcademicSessionController;
+use App\Http\Controllers\UserController;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
@@ -51,4 +52,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/repository-items', [RepositoryItemController::class, 'index']);
     Route::get('/repository-items/{item}', [RepositoryItemController::class, 'show']);
     Route::delete('/repository-items/{item}', [RepositoryItemController::class, 'destroy']);
+
+    Route::get('/users', [UserController::class, 'index']);
+
+    Route::post('/departments', [DepartmentController::class, 'store']);
+    Route::put('/departments/{department}', [DepartmentController::class, 'update']);
+    Route::delete('/departments/{department}', [DepartmentController::class, 'destroy']);
+
+    Route::get('/academic-sessions', [AcademicSessionController::class, 'index']);
+    Route::post('/academic-sessions', [AcademicSessionController::class, 'store']);
+    Route::put('/academic-sessions/{academicSession}', [AcademicSessionController::class, 'update']);
+    Route::delete('/academic-sessions/{academicSession}', [AcademicSessionController::class, 'destroy']);
+    Route::put('/academic-sessions/{academicSession}/set-active', [AcademicSessionController::class, 'setActive']);
+
+    Route::put('/projects/{project}/assign-supervisor', [ProjectController::class, 'assignSupervisor']);
 });
