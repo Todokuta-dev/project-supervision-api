@@ -1,6 +1,7 @@
 <?php
 
 namespace App\Http\Controllers;
+use Illuminate\Support\Facades\Storage;
 use App\Models\SimilarityReport;
 
 use App\Models\Project;
@@ -30,14 +31,13 @@ class SubmissionController extends Controller
         return response()->json($submission);
     }
 
-  public function store(Request $request)
+public function store(Request $request)
 {
     $validated = $request->validate([
         'project_id' => 'required|exists:projects,project_id',
         'submission_type' => 'required|in:topic_proposal,chapter_draft,final_submission',
         'chapter_label' => 'nullable|string|max:255',
-        'file_name' => 'required|string|max:255',
-        'file_path' => 'required|string|max:255',
+        'file' => 'required|file|mimes:pdf,doc,docx|max:20480',
     ]);
 
     $user = $request->user();
@@ -47,8 +47,16 @@ class SubmissionController extends Controller
         return response()->json(['message' => 'You are not authorized to submit to this project.'], 403);
     }
 
+    $file = $request->file('file');
+    $path = $file->store('submissions', 'public');
+    $fileUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+
     $submission = Submission::create([
-        ...$validated,
+        'project_id' => $validated['project_id'],
+        'submission_type' => $validated['submission_type'],
+        'chapter_label' => $validated['chapter_label'] ?? null,
+        'file_name' => $file->getClientOriginalName(),
+        'file_path' => $fileUrl,
         'submitted_at' => now(),
     ]);
 
