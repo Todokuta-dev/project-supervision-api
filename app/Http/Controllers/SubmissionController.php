@@ -47,6 +47,10 @@ public function store(Request $request)
         return response()->json(['message' => 'You are not authorized to submit to this project.'], 403);
     }
 
+    if ($project->status === 'archived') {
+    return response()->json(['message' => 'This project has already been completed and archived. No further submissions are accepted.'], 403);
+}
+
     $file = $request->file('file');
     $path = $file->store('submissions', 'public');
     $fileUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
