@@ -14,17 +14,18 @@ class RepositoryItem extends Model
     protected $keyType = 'string';
     public $timestamps = false;
 
-    protected $fillable = [
-        'title',
-        'abstract',
-        'keywords',
-        'department_id',
-        'session_id',
-        'student_id',
-        'supervisor_id',
-        'file_path',
-        'archived_at',
-    ];
+protected $fillable = [
+    'title',
+    'abstract',
+    'full_text',
+    'keywords',
+    'department_id',
+    'session_id',
+    'student_id',
+    'supervisor_id',
+    'file_path',
+    'archived_at',
+];
 
     protected function casts(): array
     {

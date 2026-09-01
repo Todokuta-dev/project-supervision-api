@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Approval;
 use App\Models\Project;
 use App\Models\RepositoryItem;
+use App\Services\SimilarityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class ApprovalController extends Controller
 {
@@ -31,68 +33,67 @@ class ApprovalController extends Controller
         return response()->json($approval);
     }
 
-public function store(Request $request)
-{
-    $validated = $request->validate([
-        'title' => 'required|string|max:255',
-        'description' => 'required|string',
-        'supervisor_id' => 'nullable|exists:users,user_id',
-    ]);
-
-    $user = $request->user();
-
-    $project = DB::transaction(function () use ($validated, $user) {
-        $project = Project::create([
-            'title' => $validated['title'],
-            'description' => $validated['description'],
-            'student_id' => $user->user_id,
-            'supervisor_id' => $validated['supervisor_id'] ?? null,
-            'department_id' => $user->department_id,
-            'session_id' => $user->session_id,
-            'status' => 'topic_pending',
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'project_id' => 'required|exists:projects,project_id',
+            'stage' => 'required|string|max:100',
+            'status' => 'required|in:pending,approved,rejected',
+            'notes' => 'nullable|string',
         ]);
 
-        Approval::create([
-            'project_id' => $project->project_id,
-            'approved_by' => null,
-            'stage' => 'topic',
-            'status' => 'pending',
-            'notes' => null,
-            'approval_date' => null,
-        ]);
+        $user = $request->user();
+        $project = Project::findOrFail($validated['project_id']);
 
-        return $project;
-    });
+        if (! $this->canDecide($user, $project)) {
+            return response()->json(['message' => 'You are not authorized to approve this project.'], 403);
+        }
 
-    return response()->json($project, 201);
-}
-public function update(Request $request, Approval $approval)
-{
-    $user = $request->user();
-    $project = $approval->project;
+        $approval = DB::transaction(function () use ($validated, $user, $project) {
+            $approval = Approval::create([
+                'project_id' => $validated['project_id'],
+                'approved_by' => $user->user_id,
+                'stage' => $validated['stage'],
+                'status' => $validated['status'],
+                'notes' => $validated['notes'] ?? null,
+                'approval_date' => $validated['status'] !== 'pending' ? now() : null,
+            ]);
 
-    if (! $this->canDecide($user, $project)) {
-        return response()->json(['message' => 'You are not authorized to approve this project.'], 403);
+            $this->cascadeProjectStatus($project, $validated['stage'], $validated['status']);
+
+            return $approval;
+        });
+
+        return response()->json($approval->load('project'), 201);
     }
 
-    $validated = $request->validate([
-        'status' => 'required|in:pending,approved,rejected',
-        'notes' => 'nullable|string',
-    ]);
+    public function update(Request $request, Approval $approval)
+    {
+        $user = $request->user();
+        $project = $approval->project;
 
-    DB::transaction(function () use ($approval, $validated, $project, $user) {
-        $approval->update([
-            'status' => $validated['status'],
-            'notes' => $validated['notes'] ?? $approval->notes,
-            'approved_by' => $user->user_id,
-            'approval_date' => $validated['status'] !== 'pending' ? now() : null,
+        if (! $this->canDecide($user, $project)) {
+            return response()->json(['message' => 'You are not authorized to approve this project.'], 403);
+        }
+
+        $validated = $request->validate([
+            'status' => 'required|in:pending,approved,rejected',
+            'notes' => 'nullable|string',
         ]);
 
-        $this->cascadeProjectStatus($project, $approval->stage, $validated['status']);
-    });
+        DB::transaction(function () use ($approval, $validated, $project, $user) {
+            $approval->update([
+                'status' => $validated['status'],
+                'notes' => $validated['notes'] ?? $approval->notes,
+                'approved_by' => $user->user_id,
+                'approval_date' => $validated['status'] !== 'pending' ? now() : null,
+            ]);
 
-    return response()->json($approval->load('project'));
-}
+            $this->cascadeProjectStatus($project, $approval->stage, $validated['status']);
+        });
+
+        return response()->json($approval->load('project'));
+    }
 
     private function canDecide($user, Project $project): bool
     {
@@ -109,7 +110,7 @@ public function update(Request $request, Approval $approval)
             $approvalStatus === 'rejected' => 'correction_required',
             $approvalStatus === 'approved' && $stage === 'final' => 'archived',
             $approvalStatus === 'approved' => 'under_review',
-            default => null, // pending — no change
+            default => null,
         };
 
         if (! $newStatus) {
@@ -119,15 +120,41 @@ public function update(Request $request, Approval $approval)
         $project->update(['status' => $newStatus]);
 
         if ($newStatus === 'archived') {
+            // Find the final submission's file to extract full text from,
+            // so future similarity checks can compare against this project.
+            $finalSubmission = $project->submissions()
+                ->where('submission_type', 'final_submission')
+                ->latest('submitted_at')
+                ->first();
+
+            $fullText = '';
+            $filePath = '';
+
+            if ($finalSubmission) {
+                $filePath = $finalSubmission->file_path;
+
+                // file_path is stored as a full URL — extract the storage-relative
+                // path so we can read the file directly from disk.
+                $relativePath = str_replace(
+                    Storage::url(''),
+                    '',
+                    parse_url($filePath, PHP_URL_PATH) ?? ''
+                );
+
+                $similarityService = new SimilarityService();
+                $fullText = $similarityService->extractText($relativePath);
+            }
+
             RepositoryItem::create([
                 'title' => $project->title,
                 'abstract' => $project->description,
+                'full_text' => $fullText,
                 'keywords' => [],
                 'department_id' => $project->department_id,
                 'session_id' => $project->session_id,
                 'student_id' => $project->student_id,
                 'supervisor_id' => $project->supervisor_id,
-                'file_path' => '', // populated later when final submission file is attached
+                'file_path' => $filePath,
                 'archived_at' => now(),
             ]);
         }

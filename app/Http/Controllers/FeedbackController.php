@@ -4,7 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Feedback;
 use App\Models\Submission;
+use App\Models\RepositoryItem;
+use App\Services\SimilarityService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class FeedbackController extends Controller
 {
@@ -40,19 +44,60 @@ class FeedbackController extends Controller
         $user = $request->user();
         $submission = Submission::with('project')->findOrFail($validated['submission_id']);
 
-        // Only the project's assigned supervisor can leave feedback
         if ($user->role !== 'supervisor' || $submission->project->supervisor_id !== $user->user_id) {
             return response()->json(['message' => 'You are not authorized to give feedback on this submission.'], 403);
         }
 
-        $feedback = Feedback::create([
-            'submission_id' => $validated['submission_id'],
-            'supervisor_id' => $user->user_id,
-            'comments' => $validated['comments'],
-            'decision' => $validated['decision'],
-            'created_at' => now(),
-        ]);
+        $feedback = DB::transaction(function () use ($validated, $user, $submission) {
+            $feedback = Feedback::create([
+                'submission_id' => $validated['submission_id'],
+                'supervisor_id' => $user->user_id,
+                'comments' => $validated['comments'],
+                'decision' => $validated['decision'],
+                'created_at' => now(),
+            ]);
 
-        return response()->json($feedback, 201);
+            // If this feedback approves a final submission, close out the
+            // project automatically: archive it and create the repository entry.
+            if (
+                $validated['decision'] === 'approve'
+                && $submission->submission_type === 'final_submission'
+            ) {
+                $this->archiveProject($submission->project, $submission);
+            }
+
+            return $feedback;
+        });
+
+        return response()->json($feedback);
+    }
+
+    private function archiveProject($project, Submission $finalSubmission): void
+    {
+        $project->update(['status' => 'archived']);
+
+        $filePath = $finalSubmission->file_path;
+
+        $relativePath = str_replace(
+            Storage::url(''),
+            '',
+            parse_url($filePath, PHP_URL_PATH) ?? ''
+        );
+
+        $similarityService = new SimilarityService();
+        $fullText = $similarityService->extractText($relativePath);
+
+        RepositoryItem::create([
+            'title' => $project->title,
+            'abstract' => $project->description,
+            'full_text' => $fullText,
+            'keywords' => [],
+            'department_id' => $project->department_id,
+            'session_id' => $project->session_id,
+            'student_id' => $project->student_id,
+            'supervisor_id' => $project->supervisor_id,
+            'file_path' => $filePath,
+            'archived_at' => now(),
+        ]);
     }
 }
