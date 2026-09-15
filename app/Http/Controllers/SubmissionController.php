@@ -76,24 +76,39 @@ class SubmissionController extends Controller
         $path = $file->store('submissions', 'public');
         $fileUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
 
+        $similarityService = new SimilarityService();
+        $extractedText = $similarityService->extractText($path);
+
         $submission = Submission::create([
             'project_id' => $validated['project_id'],
             'submission_type' => $validated['submission_type'],
             'chapter_label' => $validated['chapter_label'] ?? null,
+            'full_text' => $extractedText,
             'file_name' => $file->getClientOriginalName(),
             'file_path' => $fileUrl,
             'submitted_at' => now(),
         ]);
 
-        // Run the real similarity check against the repository corpus.
-        $similarityService = new SimilarityService();
-        $extractedText = $similarityService->extractText($path);
-        $result = $similarityService->compareAgainstRepository($extractedText);
+        // Compare against both the archived repository AND other students'
+        // submissions at the same chapter stage, then merge and rank results.
+        $repositoryResult = $similarityService->compareAgainstRepository($extractedText);
+        $sameStageMatches = $validated['chapter_label']
+            ? $similarityService->compareAgainstSameStage(
+                $extractedText,
+                $validated['chapter_label'],
+                $validated['project_id']
+            )
+            : [];
+
+        $allMatches = array_merge($repositoryResult['matched_sources'], $sameStageMatches);
+        usort($allMatches, fn ($a, $b) => $b['matched_percentage'] <=> $a['matched_percentage']);
+        $allMatches = array_slice($allMatches, 0, 5);
+        $overallScore = empty($allMatches) ? 0 : $allMatches[0]['matched_percentage'];
 
         SimilarityReport::create([
             'submission_id' => $submission->submission_id,
-            'score' => $result['score'],
-            'matched_sources' => $result['matched_sources'],
+            'score' => $overallScore,
+            'matched_sources' => $allMatches,
             'generated_at' => now(),
         ]);
 

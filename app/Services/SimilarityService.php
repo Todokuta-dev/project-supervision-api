@@ -192,6 +192,51 @@ public function extractKeywords(string $text, int $limit = 8): array
     }
 
     /**
+ * Compare a new submission's text against other students' submissions
+ * with the same chapter_label (e.g. Chapter One vs other Chapter Ones),
+ * excluding the student's own project. Catches direct copying between
+ * students at the same stage, which archived-only comparison misses.
+ */
+public function compareAgainstSameStage(string $submissionText, string $chapterLabel, string $excludeProjectId): array
+{
+    $submissionTokens = $this->tokenize($submissionText);
+    $submissionTf = $this->termFrequency($submissionTokens);
+
+    if (empty($submissionTf) || empty($chapterLabel)) {
+        return [];
+    }
+
+    $others = \App\Models\Submission::where('chapter_label', $chapterLabel)
+        ->where('project_id', '!=', $excludeProjectId)
+        ->whereNotNull('full_text')
+        ->where('full_text', '!=', '')
+        ->with('project')
+        ->get();
+
+    $matches = [];
+
+    foreach ($others as $other) {
+        $otherTokens = $this->tokenize($other->full_text);
+        $otherTf = $this->termFrequency($otherTokens);
+
+        $similarity = $this->cosineSimilarity($submissionTf, $otherTf);
+        $percentage = round($similarity * 100, 2);
+
+        if ($percentage >= 5) {
+            $matches[] = [
+                'source_title' => ($other->project->title ?? 'Unknown Project') . " ({$chapterLabel})",
+                'source_id' => $other->submission_id,
+                'matched_percentage' => $percentage,
+                'matched_excerpt' => $this->excerpt($submissionText, 200),
+                'source_excerpt' => $this->excerpt($other->full_text, 200),
+            ];
+        }
+    }
+
+    return $matches;
+}
+
+    /**
      * Grab a short excerpt from the start of a text block, for display.
      */
     private function excerpt(string $text, int $length): string

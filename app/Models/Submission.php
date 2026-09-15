@@ -15,13 +15,14 @@ class Submission extends Model
     public $timestamps = false;
 
     protected $fillable = [
-        'project_id',
-        'submission_type',
-        'chapter_label',
-        'file_path',
-        'file_name',
-        'submitted_at',
-    ];
+    'project_id',
+    'submission_type',
+    'chapter_label',
+    'full_text',
+    'file_path',
+    'file_name',
+    'submitted_at',
+];
 
     protected function casts(): array
     {
