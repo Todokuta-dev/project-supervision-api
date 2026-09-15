@@ -91,7 +91,7 @@ class FeedbackController extends Controller
             'title' => $project->title,
             'abstract' => $project->description,
             'full_text' => $fullText,
-            'keywords' => [],
+            'keywords' => $similarityService->extractKeywords($fullText),
             'department_id' => $project->department_id,
             'session_id' => $project->session_id,
             'student_id' => $project->student_id,

@@ -110,6 +110,35 @@ class SimilarityService
         return $dotProduct / (sqrt($magnitudeA) * sqrt($magnitudeB));
     }
 
+
+    /**
+ * Pull the most frequent meaningful words from a block of text to use
+ * as searchable keywords. Filters out common English stopwords so the
+ * result is meaningful (e.g. "machine", "learning", "detection" rather
+ * than "the", "and", "of").
+ */
+public function extractKeywords(string $text, int $limit = 8): array
+{
+    $stopwords = [
+        'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can',
+        'her', 'was', 'one', 'our', 'out', 'day', 'get', 'has', 'him',
+        'his', 'how', 'man', 'new', 'now', 'old', 'see', 'two', 'way',
+        'who', 'boy', 'did', 'its', 'let', 'put', 'say', 'she', 'too',
+        'use', 'that', 'this', 'with', 'from', 'have', 'will', 'your',
+        'they', 'been', 'were', 'said', 'each', 'which', 'their', 'time',
+        'into', 'than', 'more', 'other', 'also', 'these', 'some', 'such',
+        'when', 'what', 'chapter', 'system', 'study', 'research', 'project',
+    ];
+
+    $tokens = $this->tokenize($text);
+    $tokens = array_filter($tokens, fn ($t) => !in_array($t, $stopwords));
+
+    $frequency = array_count_values($tokens);
+    arsort($frequency);
+
+    return array_slice(array_keys($frequency), 0, $limit);
+}
+
     /**
      * Compare a submission's extracted text against every RepositoryItem
      * that has full_text populated. Returns an overall score (0-100) and
