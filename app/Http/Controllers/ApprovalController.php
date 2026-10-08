@@ -4,11 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Approval;
 use App\Models\Project;
-use App\Models\RepositoryItem;
-use App\Services\SimilarityService;
+use App\Services\ProjectArchiver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class ApprovalController extends Controller
 {
@@ -117,46 +115,12 @@ class ApprovalController extends Controller
             return;
         }
 
-        $project->update(['status' => $newStatus]);
-
         if ($newStatus === 'archived') {
-            // Find the final submission's file to extract full text from,
-            // so future similarity checks can compare against this project.
-            $finalSubmission = $project->submissions()
-                ->where('submission_type', 'final_submission')
-                ->latest('submitted_at')
-                ->first();
+            app(ProjectArchiver::class)->archive($project);
 
-            $fullText = '';
-            $filePath = '';
-
-            if ($finalSubmission) {
-                $filePath = $finalSubmission->file_path;
-
-                // file_path is stored as a full URL — extract the storage-relative
-                // path so we can read the file directly from disk.
-                $relativePath = str_replace(
-                    Storage::url(''),
-                    '',
-                    parse_url($filePath, PHP_URL_PATH) ?? ''
-                );
-
-                $similarityService = new SimilarityService();
-                $fullText = $similarityService->extractText($relativePath);
-            }
-
-            RepositoryItem::create([
-                'title' => $project->title,
-                'abstract' => $project->description,
-                'full_text' => $fullText,
-                'keywords' => [],
-                'department_id' => $project->department_id,
-                'session_id' => $project->session_id,
-                'student_id' => $project->student_id,
-                'supervisor_id' => $project->supervisor_id,
-                'file_path' => $filePath,
-                'archived_at' => now(),
-            ]);
+            return;
         }
+
+        $project->update(['status' => $newStatus]);
     }
 }

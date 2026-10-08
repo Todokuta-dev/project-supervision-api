@@ -16,6 +16,7 @@ class RepositoryItem extends Model
 
 protected $fillable = [
     'title',
+    'project_id',
     'abstract',
     'full_text',
     'keywords',
@@ -26,6 +27,11 @@ protected $fillable = [
     'file_path',
     'archived_at',
 ];
+
+    public function project()
+    {
+        return $this->belongsTo(Project::class, 'project_id', 'project_id');
+    }
 
     protected function casts(): array
     {

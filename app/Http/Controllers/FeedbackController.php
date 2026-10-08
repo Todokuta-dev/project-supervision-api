@@ -4,11 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Feedback;
 use App\Models\Submission;
-use App\Models\RepositoryItem;
-use App\Services\SimilarityService;
+use App\Services\ProjectArchiver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class FeedbackController extends Controller
 {
@@ -57,47 +55,16 @@ class FeedbackController extends Controller
                 'created_at' => now(),
             ]);
 
-            // If this feedback approves a final submission, close out the
-            // project automatically: archive it and create the repository entry.
             if (
                 $validated['decision'] === 'approve'
                 && $submission->submission_type === 'final_submission'
             ) {
-                $this->archiveProject($submission->project, $submission);
+                app(ProjectArchiver::class)->archive($submission->project, $submission);
             }
 
             return $feedback;
         });
 
         return response()->json($feedback);
-    }
-
-    private function archiveProject($project, Submission $finalSubmission): void
-    {
-        $project->update(['status' => 'archived']);
-
-        $filePath = $finalSubmission->file_path;
-
-        $relativePath = str_replace(
-            Storage::url(''),
-            '',
-            parse_url($filePath, PHP_URL_PATH) ?? ''
-        );
-
-        $similarityService = new SimilarityService();
-        $fullText = $similarityService->extractText($relativePath);
-
-        RepositoryItem::create([
-            'title' => $project->title,
-            'abstract' => $project->description,
-            'full_text' => $fullText,
-            'keywords' => $similarityService->extractKeywords($fullText),
-            'department_id' => $project->department_id,
-            'session_id' => $project->session_id,
-            'student_id' => $project->student_id,
-            'supervisor_id' => $project->supervisor_id,
-            'file_path' => $filePath,
-            'archived_at' => now(),
-        ]);
     }
 }

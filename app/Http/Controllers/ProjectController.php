@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Models\Approval;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
@@ -51,10 +52,17 @@ public function store(Request $request)
     $validated = $request->validate([
         'title' => 'required|string|max:255',
         'description' => 'required|string',
-        'supervisor_id' => 'nullable|exists:users,user_id',
+        'supervisor_id' => [
+            'nullable',
+            Rule::exists('users', 'user_id')->where('role', 'supervisor'),
+        ],
     ]);
 
     $user = $request->user();
+
+    if ($user->role !== 'student') {
+        return response()->json(['message' => 'Only students can create projects.'], 403);
+    }
 
     $project = DB::transaction(function () use ($validated, $user) {
         $project = Project::create([
@@ -89,7 +97,6 @@ public function store(Request $request)
         $validated = $request->validate([
             'title' => 'sometimes|string|max:255',
             'description' => 'sometimes|string',
-            'status' => 'sometimes|in:topic_pending,under_review,correction_required,approved,archived',
         ]);
 
         $project->update($validated);
@@ -104,7 +111,10 @@ public function store(Request $request)
     }
 
     $validated = $request->validate([
-        'supervisor_id' => 'required|exists:users,user_id',
+        'supervisor_id' => [
+            'required',
+            Rule::exists('users', 'user_id')->where('role', 'supervisor'),
+        ],
     ]);
 
     $project->update(['supervisor_id' => $validated['supervisor_id']]);
@@ -112,4 +122,3 @@ public function store(Request $request)
     return response()->json($project);
 }
 }
-
