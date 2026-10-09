@@ -17,6 +17,7 @@ class SimilarityReport extends Model
     protected $fillable = [
         'submission_id',
         'score',
+        'analysis_status',
         'matched_sources',
         'generated_at',
     ];

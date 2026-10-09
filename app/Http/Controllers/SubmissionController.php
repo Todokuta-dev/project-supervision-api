@@ -38,7 +38,7 @@ class SubmissionController extends Controller
         $validated = $request->validate([
             'project_id' => 'required|exists:projects,project_id',
             'submission_type' => 'required|in:topic_proposal,chapter_draft,final_submission',
-            'chapter_label' => 'nullable|string|max:255',
+            'chapter_label' => 'required_if:submission_type,chapter_draft|nullable|string|max:255',
             'file' => 'required|file|mimes:pdf,doc,docx|max:20480',
         ]);
 
@@ -89,16 +89,14 @@ class SubmissionController extends Controller
             'submitted_at' => now(),
         ]);
 
-        // Compare against both the archived repository AND other students'
-        // submissions at the same chapter stage, then merge and rank results.
+        // Compare against the repository and other submissions at the same stage.
         $repositoryResult = $similarityService->compareAgainstRepository($extractedText);
-        $sameStageMatches = $validated['chapter_label']
-            ? $similarityService->compareAgainstSameStage(
-                $extractedText,
-                $validated['chapter_label'],
-                $validated['project_id']
-            )
-            : [];
+        $sameStageMatches = $similarityService->compareAgainstSameStage(
+            $extractedText,
+            $validated['submission_type'],
+            $validated['chapter_label'] ?? null,
+            $validated['project_id']
+        );
 
         $allMatches = array_merge($repositoryResult['matched_sources'], $sameStageMatches);
         usort($allMatches, fn ($a, $b) => $b['matched_percentage'] <=> $a['matched_percentage']);
@@ -108,6 +106,7 @@ class SubmissionController extends Controller
         SimilarityReport::create([
             'submission_id' => $submission->submission_id,
             'score' => $overallScore,
+            'analysis_status' => $similarityService->analysisStatus($extractedText),
             'matched_sources' => $allMatches,
             'generated_at' => now(),
         ]);
