@@ -74,7 +74,9 @@ class SubmissionController extends Controller
 
         $file = $request->file('file');
         $path = $file->store('submissions', 'public');
-        $fileUrl = $request->getSchemeAndHttpHost() . Storage::url($path);
+        // Build the public URL from the configured disk URL (APP_URL), not
+        // the request scheme, which may appear as HTTP behind Railway's proxy.
+        $fileUrl = Storage::disk('public')->url($path);
 
         $similarityService = new SimilarityService();
         $extractedText = $similarityService->extractText($path);
