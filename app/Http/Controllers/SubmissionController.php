@@ -39,7 +39,7 @@ class SubmissionController extends Controller
             'project_id' => 'required|exists:projects,project_id',
             'submission_type' => 'required|in:topic_proposal,chapter_draft,final_submission',
             'chapter_label' => 'required_if:submission_type,chapter_draft|nullable|string|max:255',
-            'file' => 'required|file|mimes:pdf,doc,docx|max:20480',
+            'file' => 'required|file|mimes:pdf,doc,docx,txt,rtf,odt,odp,ods,ppt,pptx,xls,xlsx,png,jpg,jpeg,tif,tiff,bmp|max:20480',
         ]);
 
         $user = $request->user();
@@ -102,11 +102,12 @@ class SubmissionController extends Controller
         usort($allMatches, fn ($a, $b) => $b['matched_percentage'] <=> $a['matched_percentage']);
         $allMatches = array_slice($allMatches, 0, 5);
         $overallScore = empty($allMatches) ? 0 : $allMatches[0]['matched_percentage'];
+        $analysisStatus = $similarityService->analysisStatus($extractedText);
 
         SimilarityReport::create([
             'submission_id' => $submission->submission_id,
-            'score' => $overallScore,
-            'analysis_status' => $similarityService->analysisStatus($extractedText),
+            'score' => $analysisStatus === 'complete' ? $overallScore : null,
+            'analysis_status' => $analysisStatus,
             'matched_sources' => $allMatches,
             'generated_at' => now(),
         ]);

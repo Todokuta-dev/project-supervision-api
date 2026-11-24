@@ -6,6 +6,7 @@ use App\Models\RepositoryItem;
 use App\Models\Submission;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Http;
 use PhpOffice\PhpWord\IOFactory;
 use Smalot\PdfParser\Parser as PdfParser;
 
@@ -40,6 +41,33 @@ class SimilarityService
             }
 
             $extension = strtolower(pathinfo($fullPath, PATHINFO_EXTENSION));
+
+            // Apache Tika handles formats beyond PHPWord/PDFParser and can run
+            // OCR when the Tika server is configured with its OCR strategy.
+            $tikaUrl = rtrim((string) config('services.tika.url'), '/');
+            if ($tikaUrl !== '') {
+                try {
+                    $response = Http::timeout(90)
+                        ->withBody(file_get_contents($fullPath), 'application/octet-stream')
+                        ->put($tikaUrl.'/tika');
+                    if ($response->successful() && trim($response->body()) !== '') {
+                        return trim($response->body());
+                    }
+                    Log::warning('SimilarityService: Tika did not extract text.', [
+                        'storage_path' => $storagePath,
+                        'status' => $response->status(),
+                    ]);
+                } catch (\Throwable $exception) {
+                    Log::warning('SimilarityService: Tika request failed.', [
+                        'storage_path' => $storagePath,
+                        'exception' => $exception->getMessage(),
+                    ]);
+                }
+            }
+
+            if ($extension === 'txt') {
+                return trim((string) file_get_contents($fullPath));
+            }
 
             if ($extension === 'pdf') {
                 $pdf = (new PdfParser())->parseFile($fullPath);

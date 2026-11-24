@@ -30,6 +30,12 @@ The browser frontend uses Laravel Sanctum's stateful session authentication. It 
 - `/api/repository-items`, `/api/departments`, and `/api/academic-sessions`
 - `/api/users` returns a limited profile directory scoped to the caller's projects; administrators can view the full directory.
 
+### Similarity text extraction
+
+Submission uploads accept common office documents, text files, PDFs, and images. For broad format support, deploy an Apache Tika server in the same Railway project and set the API service variable `TIKA_URL` to its internal base URL (for example, `http://tika.railway.internal:9998`). The API sends uploaded files to Tika's `/tika` endpoint and uses the existing PHP parsers as a fallback. Configure the Tika service with OCR support (including Tesseract) if scanned PDFs or images should be analyzed. Without `TIKA_URL`, only the built-in PDF, Word, and plain-text extractors are used.
+
+Similarity reports use `analysis_status` to distinguish a completed comparison from extraction failure or insufficient text. In those non-complete states, `score` is `null`; it should be rendered as unavailable, not as zero percent.
+
 Students create projects and upload PDF or Word submissions. The API extracts text, compares submissions with repository records and matching chapter stages, and creates a report. Supervisor feedback or a final approval can archive a completed project. Repository records are linked uniquely to their project so either completion path can be safely repeated.
 
 Run `php artisan route:list --path=api` to inspect the registered endpoints.
